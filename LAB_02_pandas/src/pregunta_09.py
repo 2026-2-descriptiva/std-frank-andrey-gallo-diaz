@@ -1,6 +1,8 @@
+import pandas as pd
+
 def pregunta_09():
-    """
-    Retorne la tabla `data/tbl0.tsv` completa con una columna adicional
+    """Retorne la tabla `data/tbl0.tsv` completa con una columna adicional
+
     llamada `year`, al final, que contenga el año de la fecha de la columna
     `c3` como un texto de cuatro caracteres.
 
@@ -12,5 +14,6 @@ def pregunta_09():
         2    2  B   5  1998-05-02  1998
         ...
     """
-
-    raise NotImplementedError
+    df = pd.read_csv("data/tbl0.tsv", sep="\t")
+    df["year"] = df["c3"].str.split("-").str[0]
+    return df

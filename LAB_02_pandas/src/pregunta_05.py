@@ -1,6 +1,8 @@
+import pandas as pd
+
 def pregunta_05():
-    """
-    Usando `data/tbl0.tsv`, encuentre el valor máximo de la columna `c2` para
+    """Usando `data/tbl0.tsv`, encuentre el valor máximo de la columna `c2` para
+
     cada categoría de la columna `c1`. Retorne una Serie de Pandas cuyo índice
     son las categorías, en orden alfabético, y cuyos valores son los máximos.
 
@@ -12,5 +14,5 @@ def pregunta_05():
         C    9
         ...
     """
-
-    raise NotImplementedError
+    df = pd.read_csv("data/tbl0.tsv", sep="\t")
+    return df.groupby("c1")["c2"].max().sort_index()

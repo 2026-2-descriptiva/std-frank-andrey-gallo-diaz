@@ -1,6 +1,8 @@
+import pandas as pd
+
 def pregunta_04():
-    """
-    Usando `data/tbl0.tsv`, calcule el promedio de la columna `c2` para cada
+    """Usando `data/tbl0.tsv`, calcule el promedio de la columna `c2` para cada
+
     categoría de la columna `c1`. Retorne una Serie de Pandas cuyo índice son
     las categorías, en orden alfabético, y cuyos valores son los promedios.
 
@@ -12,5 +14,5 @@ def pregunta_04():
         C    5.4000
         ...
     """
-
-    raise NotImplementedError
+    df = pd.read_csv("data/tbl0.tsv", sep="\t")
+    return df.groupby("c1")["c2"].mean().sort_index()

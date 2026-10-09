@@ -1,6 +1,8 @@
+import pandas as pd
+
 def pregunta_12():
-    """
-    En `data/tbl2.tsv`, cada valor de la columna `c0` aparece en varias
+    """En `data/tbl2.tsv`, cada valor de la columna `c0` aparece en varias
+
     filas. Construya un DataFrame con una fila por cada valor de `c0`, en
     orden ascendente, y las columnas `c0` y `c5`. En `c5`, forme un texto
     `c5a:c5b` para cada fila de ese `c0`, ordene esos textos alfabéticamente y
@@ -14,5 +16,14 @@ def pregunta_12():
         2    2        ccc:6,ddd:2,ggg:5,jjj:1
         ...
     """
+    df = pd.read_csv("data/tbl2.tsv", sep="\t")
 
-    raise NotImplementedError
+    df["c5_pair"] = df["c5a"] + ":" + df["c5b"].astype(str)
+
+    result = (
+        df.groupby("c0")["c5_pair"]
+        .apply(lambda x: ",".join(sorted(x)))
+        .reset_index(name="c5")
+    )
+
+    return result
