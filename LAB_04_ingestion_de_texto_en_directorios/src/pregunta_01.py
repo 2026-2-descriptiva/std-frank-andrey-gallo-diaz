@@ -1,6 +1,10 @@
+import os
+import glob
+import pandas as pd
+
 def pregunta_01():
-    """
-    Las frases de este laboratorio no están en una tabla, sino en miles de
+    """Las frases de este laboratorio no están en una tabla, sino en miles de
+
     archivos de texto organizados en carpetas. Dentro de `data/` hay dos
     carpetas, `train/` y `test/`, y cada una contiene las carpetas
     `negative/`, `neutral/` y `positive/`. Cada archivo `.txt` contiene una
@@ -25,5 +29,23 @@ def pregunta_01():
         "Cardona slowed her vehicle , turned around ...",neutral
         ...
     """
+    os.makedirs("submission", exist_ok=True)
 
-    raise NotImplementedError
+    splits = ["train", "test"]
+    targets = ["negative", "neutral", "positive"]
+
+    for split in sorted(splits):
+        data = []
+        for target in sorted(targets):
+            folder_path = os.path.join("data", split, target)
+            pattern = os.path.join(folder_path, "*.txt")
+            files = sorted(glob.glob(pattern))
+
+            for file_path in files:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    phrase = f.read().strip()
+                    data.append({"phrase": phrase, "target": target})
+
+        df = pd.DataFrame(data)
+        output_path = os.path.join("submission", f"{split}_dataset.csv")
+        df.to_csv(output_path, index=False)
