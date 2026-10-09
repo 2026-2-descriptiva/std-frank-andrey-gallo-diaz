@@ -1,6 +1,9 @@
+from collections import Counter
+import gzip
+
 def pregunta_02():
-    """
-    Cuente cuántos registros hay para cada letra de la primera columna
+    """Cuente cuántos registros hay para cada letra de la primera columna
+
     (`letter`). Retorne una lista de tuplas `(letra, cantidad)` ordenada
     alfabéticamente por la letra.
 
@@ -8,5 +11,10 @@ def pregunta_02():
 
         [("A", 8), ("B", 7), ("C", 5), ...]
     """
+    counts = Counter()
+    with gzip.open("data/data.csv.gz", "rt", encoding="utf-8") as file:
+        for line in file:
+            letter = line.split("\t")[0]
+            counts[letter] += 1
 
-    raise NotImplementedError
+    return sorted(counts.items())
