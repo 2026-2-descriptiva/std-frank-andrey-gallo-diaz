@@ -25,3 +25,4 @@
 --
 --  Escriba su consulta debajo de esta línea.
 --
+SELECT SUBSTR(c23, 1, 4) AS YEAR, AVG(c21) FROM tbl2 GROUP BY YEAR;
