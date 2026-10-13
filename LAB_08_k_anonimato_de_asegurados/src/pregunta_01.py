@@ -1,6 +1,11 @@
+import json
+import os
+import pandas as pd
+
+
 def pregunta_01():
-    """
-    Una aseguradora quiere publicar datos de sus afiliados para que un grupo
+    """Una aseguradora quiere publicar datos de sus afiliados para que un grupo
+
     de investigación estudie el costo de los seguros, sin que nadie pueda
     reconocer a una persona. El archivo `data/insurance.csv.gz` tiene una fila
     por afiliado con su edad (`age`), sexo (`sex`), índice de masa corporal
@@ -79,5 +84,145 @@ def pregunta_01():
           ...
         }
     """
+    os.makedirs("submission", exist_ok=True)
 
-    raise NotImplementedError
+    df = pd.read_csv("data/insurance.csv.gz")
+
+    orig_qis = ["age", "sex", "bmi", "children", "region"]
+    orig_counts = df.groupby(orig_qis).transform("size")
+    original_k = int(orig_counts.min())
+    original_unique_records = int((orig_counts == 1).sum())
+
+    def obtener_grupo_edad(edad):
+        if edad <= 29:
+            return "18-29"
+        elif edad <= 39:
+            return "30-39"
+        elif edad <= 49:
+            return "40-49"
+        else:
+            return "50-64"
+
+    def obtener_grupo_bmi(bmi):
+        if bmi < 18.5:
+            return "bajo peso"
+        elif bmi < 25.0:
+            return "normal"
+        elif bmi < 30.0:
+            return "sobrepeso"
+        else:
+            return "obesidad"
+
+    def obtener_grupo_hijos(hijos):
+        if hijos == 0:
+            return "0"
+        elif hijos <= 2:
+            return "1-2"
+        else:
+            return "3+"
+
+    df["age_group"] = df["age"].apply(obtener_grupo_edad)
+    df["bmi_group"] = df["bmi"].apply(obtener_grupo_bmi)
+    df["children_group"] = df["children"].apply(obtener_grupo_hijos)
+
+    esquemas_config = {
+        "with_children": [
+            "age_group",
+            "sex",
+            "bmi_group",
+            "children_group",
+            "region",
+        ],
+        "without_children": ["age_group", "sex", "bmi_group", "region"],
+    }
+
+    resultados_esquemas = {}
+    metricas_esquemas = {}
+
+    for nombre_esquema, qis in esquemas_config.items():
+        df[f"_tamano_clase_{nombre_esquema}"] = df.groupby(qis).transform(
+            "size"
+        )
+        equivalence_classes = int(df[qis].drop_duplicates().shape[0])
+        k_before_suppression = int(
+            df[f"_tamano_clase_{nombre_esquema}"].min()
+        )
+
+        mascara_publicada = df[f"_tamano_clase_{nombre_esquema}"] >= 5
+        suppressed_records = int((~mascara_publicada).sum())
+        published_records = int(mascara_publicada.sum())
+
+        df_publicado = df[mascara_publicada]
+        published_classes = int(df_publicado[qis].drop_duplicates().shape[0])
+
+        clase_smoker_nunique = df_publicado.groupby(qis)["smoker"].nunique()
+        clases_sin_diversidad = clase_smoker_nunique[
+            clase_smoker_nunique == 1
+        ].index
+        if len(clases_sin_diversidad) > 0:
+            temp_pub = df_publicado.copy()
+            if len(qis) == 1:
+                mascara_sin_div = temp_pub[qis[0]].isin(clases_sin_diversidad)
+            else:
+                mascara_sin_div = pd.MultiIndex.from_frame(
+                    temp_pub[qis]
+                ).isin(
+                    pd.MultiIndex.from_frame(
+                        pd.DataFrame(list(clases_sin_diversidad), columns=qis)
+                    )
+                )
+            records_without_diversity = int(mascara_sin_div.sum())
+            classes_without_diversity_count = len(clases_sin_diversidad)
+        else:
+            records_without_diversity = 0
+            classes_without_diversity_count = 0
+
+        resultados_esquemas[nombre_esquema] = {
+            "quasi_identifiers": qis,
+            "equivalence_classes": equivalence_classes,
+            "k_before_suppression": k_before_suppression,
+            "suppressed_records": suppressed_records,
+            "published_records": published_records,
+            "published_classes": published_classes,
+            "classes_without_smoker_diversity": classes_without_diversity_count,
+            "records_without_smoker_diversity": records_without_diversity,
+        }
+        metricas_esquemas[nombre_esquema] = suppressed_records
+
+    selected_scheme = min(metricas_esquemas, key=metricas_esquemas.get)
+
+    mean_charges_original = float(df["charges"].mean())
+    smoker_rate_original = float(
+        (df["smoker"].str.lower() == "yes").mean()
+    )
+
+    selected_qis = esquemas_config[selected_scheme]
+    selected_pub_mask = df[f"_tamano_clase_{selected_scheme}"] >= 5
+    df_selected_published = df[selected_pub_mask]
+
+    mean_charges_published = float(df_selected_published["charges"].mean())
+    smoker_rate_published = float(
+        (df_selected_published["smoker"].str.lower() == "yes").mean()
+    )
+
+    reporte = {
+        "original_k": original_k,
+        "original_unique_records": original_unique_records,
+        "schemes": resultados_esquemas,
+        "selected_scheme": selected_scheme,
+        "mean_charges_original": mean_charges_original,
+        "mean_charges_published": mean_charges_published,
+        "smoker_rate_original": smoker_rate_original,
+        "smoker_rate_published": smoker_rate_published,
+    }
+
+    report_path = os.path.join("submission", "privacy_report.json")
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(reporte, f, indent=4, ensure_ascii=False)
+
+    output_cols = selected_qis + ["smoker", "charges"]
+    df_published_output = df_selected_published[output_cols].copy()
+    csv_path = os.path.join("submission", "insurance_published.csv")
+    df_published_output.to_csv(csv_path, index=False)
+
+    return reporte
