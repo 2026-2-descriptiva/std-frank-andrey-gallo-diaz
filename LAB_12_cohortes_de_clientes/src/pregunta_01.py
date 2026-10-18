@@ -1,5 +1,8 @@
 import pandas as pd
-
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 def build_cohort_analysis() -> pd.DataFrame:
     """
@@ -44,4 +47,59 @@ def build_cohort_analysis() -> pd.DataFrame:
         ...
     """
 
-    raise NotImplementedError
+    df = pd.read_csv("data/sales.csv.gz")
+    df["OrderDate"] = pd.to_datetime(df["OrderDate"])
+    df["order_month"] = df["OrderDate"].dt.to_period("M")
+    df["cohort_month_period"] = df.groupby("CustomerID")["order_month"].transform("min")
+    
+    df["period_index"] = (
+        (df["order_month"].dt.year - df["cohort_month_period"].dt.year) * 12 +
+        (df["order_month"].dt.month - df["cohort_month_period"].dt.month)
+    )
+    
+    df["cohort_month"] = df["cohort_month_period"].astype(str)
+    
+    grouped = (
+        df.groupby(["cohort_month", "period_index"])["CustomerID"]
+        .nunique()
+        .reset_index()
+        .rename(columns={"CustomerID": "active_customers"})
+    )
+    
+    cohort_sizes = (
+        grouped[grouped["period_index"] == 0][["cohort_month", "active_customers"]]
+        .rename(columns={"active_customers": "cohort_size"})
+    )
+    
+    result = pd.merge(grouped, cohort_sizes, on="cohort_month")
+    result["retention_rate"] = result["active_customers"] / result["cohort_size"]
+    result = result[["cohort_month", "period_index", "active_customers", "cohort_size", "retention_rate"]]
+    result = result.sort_values(by=["cohort_month", "period_index"]).reset_index(drop=True)
+    
+    os.makedirs("submission", exist_ok=True)
+    result.to_csv("submission/cohort_retention.csv", index=False)
+    pivot_table = result.pivot(index="cohort_month", columns="period_index", values="retention_rate")
+    plt.figure(figsize=(10, 6))
+    sns.set_theme(style="white")
+    
+    sns.heatmap(
+        pivot_table,
+        annot=True,
+        fmt=".1%",
+        cmap="YlGnBu",
+        cbar_kws={'label': 'Tasa de Retención'},
+        linewidths=0.5,
+        linecolor='white',
+        vmin=0.0,
+        vmax=1.0
+    )
+    
+    plt.title("Matriz de Retención por Cohortes (2022)", fontsize=14, pad=15)
+    plt.xlabel("Período (Meses transcurridos desde la primera compra)", fontsize=11)
+    plt.ylabel("Cohorte (Mes de primera compra)", fontsize=11)
+    plt.tight_layout()
+    
+    plt.savefig("submission/cohort_retention_heatmap.png", dpi=300)
+    plt.close()
+    
+    return result
