@@ -1,5 +1,6 @@
 import pandas as pd
-
+import os
+import numpy as np
 
 def pregunta_01() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
@@ -61,4 +62,122 @@ def pregunta_01() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         ...
     """
 
-    raise NotImplementedError
+    path_web = "data/historical_requests_web.csv.gz"
+    path_letter = "data/historical_requests_letter.csv.gz"
+    df_web = pd.read_csv(path_web).drop_duplicates()
+    df_letter = pd.read_csv(path_letter).drop_duplicates()
+    df_web["channel"] = "web"
+    df_letter["channel"] = "letter"
+    df = pd.concat([df_web, df_letter], ignore_index=True)
+    df["in_date"] = pd.to_datetime(df["in_date"])
+    df["out_date"] = pd.to_datetime(df["out_date"])
+    df["year"] = df["in_date"].dt.year
+    df["answered"] = df["out_date"].notna()
+    df["calendar_days"] = (df["out_date"] - df["in_date"]).dt.days
+
+    mask_answered = df["answered"]
+    df["business_days"] = np.nan
+    in_dates_ans = (df.loc[mask_answered, "in_date"] + pd.Timedelta(days=1)).dt.date.values.astype("datetime64[D]")
+    out_dates_ans = (df.loc[mask_answered, "out_date"] + pd.Timedelta(days=1)).dt.date.values.astype("datetime64[D]")
+
+    df.loc[mask_answered, "business_days"] = np.busday_count(in_dates_ans, out_dates_ans)
+    df["on_time"] = (df["answered"]) & (df["business_days"] <= 15)
+
+    os.makedirs("submission", exist_ok=True)
+
+    channel_list = []
+    for ch in sorted(df["channel"].unique()):
+        sub = df[df["channel"] == ch]
+        reqs = len(sub)
+        ans = sub["answered"].sum()
+        pend = reqs - ans
+        med_bus = sub.loc[sub["answered"], "business_days"].median()
+        ontime_rate = sub["on_time"].sum() / reqs
+
+        channel_list.append(
+            {
+                "channel": ch,
+                "requests": reqs,
+                "answered": ans,
+                "pending": pend,
+                "median_business_days": med_bus,
+                "on_time_rate": ontime_rate,
+            }
+        )
+
+    channel_summary = pd.DataFrame(channel_list)
+    channel_summary.to_csv("submission/channel_summary.csv", index=False)
+
+    yearly_list = []
+    years = sorted(df["year"].unique())
+    channels = sorted(df["channel"].unique())
+
+    for yr in years:
+        for ch in channels:
+            sub = df[(df["year"] == yr) & (df["channel"] == ch)]
+            if len(sub) > 0:
+                reqs = len(sub)
+                pend = (~sub["answered"]).sum()
+                ontime_rate = sub["on_time"].sum() / reqs
+                yearly_list.append(
+                    {
+                        "year": yr,
+                        "channel": ch,
+                        "requests": reqs,
+                        "pending": pend,
+                        "on_time_rate": ontime_rate,
+                    }
+                )
+
+    yearly_summary = pd.DataFrame(yearly_list)
+    yearly_summary.to_csv("submission/yearly_summary.csv", index=False)
+
+    sample_day = df["day_name"].iloc[0]
+    days_order_en = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ]
+    days_order_es = [
+        "Lunes",
+        "Martes",
+        "Miércoles",
+        "Jueves",
+        "Viernes",
+        "Sábado",
+        "Domingo",
+    ]
+
+    if sample_day in days_order_es or "Miercoles" in df["day_name"].values:
+        df["day_name_clean"] = df["day_name"].replace({"Miercoles": "Miércoles"})
+        target_days = days_order_es
+    else:
+        df["day_name_clean"] = df["day_name"]
+        target_days = days_order_en
+
+    entry_day_list = []
+    for day in target_days:
+        sub = df[df["day_name_clean"] == day]
+        if len(sub) > 0:
+            reqs = len(sub)
+            ans_sub = sub[sub["answered"]]
+            med_cal = ans_sub["calendar_days"].median()
+            med_bus = ans_sub["business_days"].median()
+
+            entry_day_list.append(
+                {
+                    "day_name": day,
+                    "requests": reqs,
+                    "median_calendar_days": med_cal,
+                    "median_business_days": med_bus,
+                }
+            )
+
+    entry_day_summary = pd.DataFrame(entry_day_list)
+    entry_day_summary.to_csv("submission/entry_day_summary.csv", index=False)
+
+    return channel_summary, yearly_summary, entry_day_summary
